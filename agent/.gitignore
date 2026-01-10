@@ -1,0 +1,13 @@
+# Rust / Tauri
+**/target/
+**/*.rs.bk
+
+# Node
+node_modules/
+
+# Logs
+*.log
+
+# OS files
+Thumbs.db
+.DS_Store
