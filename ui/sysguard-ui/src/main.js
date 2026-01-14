@@ -1,18 +1,17 @@
-const { invoke } = window.__TAURI__.core;
+document.getElementById("app").innerHTML = `
+  <h1>SysGuard AI</h1>
+  <button id="refresh">Refresh System Metrics</button>
+  <pre id="output"></pre>
+`;
 
-let greetInputEl;
-let greetMsgEl;
-
-async function greet() {
-  // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-  greetMsgEl.textContent = await invoke("greet", { name: greetInputEl.value });
-}
-
-window.addEventListener("DOMContentLoaded", () => {
-  greetInputEl = document.querySelector("#greet-input");
-  greetMsgEl = document.querySelector("#greet-msg");
-  document.querySelector("#greet-form").addEventListener("submit", (e) => {
-    e.preventDefault();
-    greet();
-  });
-});
+document.getElementById("refresh").onclick = async () => {
+  try {
+    const res = await fetch("http://127.0.0.1:7878/metrics");
+    const data = await res.json();
+    document.getElementById("output").textContent =
+      JSON.stringify(data, null, 2);
+  } catch {
+    document.getElementById("output").textContent =
+      "Agent not running";
+  }
+};
