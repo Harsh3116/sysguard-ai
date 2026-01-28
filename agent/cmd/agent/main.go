@@ -4,19 +4,15 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-	"time"
-
-	"github.com/shirou/gopsutil/v3/cpu"
-	"github.com/shirou/gopsutil/v3/disk"
-	"github.com/shirou/gopsutil/v3/mem"
+	"os/exec"
+	"strings"
 )
 
-type MetricsResponse struct {
-	CPUPercent  float64 `json:"cpu_percent"`
-	MemoryUsed  uint64  `json:"memory_used"`
-	MemoryTotal uint64  `json:"memory_total"`
-	DiskUsed    uint64  `json:"disk_used"`
-	DiskTotal   uint64  `json:"disk_total"`
+type ShutdownAnalysis struct {
+	Cause          string `json:"cause"`
+	Severity       string `json:"severity"`
+	Explanation    string `json:"explanation"`
+	Recommendation string `json:"recommendation"`
 }
 
 func withCORS(handler http.HandlerFunc) http.HandlerFunc {
@@ -29,30 +25,50 @@ func withCORS(handler http.HandlerFunc) http.HandlerFunc {
 			w.WriteHeader(http.StatusOK)
 			return
 		}
-
 		handler(w, r)
 	}
 }
 
-func metricsHandler(w http.ResponseWriter, r *http.Request) {
-	cpuPercents, _ := cpu.Percent(time.Second, false)
-	memStat, _ := mem.VirtualMemory()
-	diskStat, _ := disk.Usage("C:\\")
+func shutdownAnalysisHandler(w http.ResponseWriter, r *http.Request) {
+	// PowerShell command to fetch last critical shutdown
+	cmd := exec.Command(
+		"powershell",
+		"-Command",
+		"Get-WinEvent -FilterHashtable @{LogName='System'; Id=41} -MaxEvents 1 | Select-Object -ExpandProperty Message",
+	)
 
-	resp := MetricsResponse{
-		CPUPercent:  cpuPercents[0],
-		MemoryUsed:  memStat.Used,
-		MemoryTotal: memStat.Total,
-		DiskUsed:    diskStat.Used,
-		DiskTotal:   diskStat.Total,
+	output, err := cmd.Output()
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "Unable to read system shutdown logs",
+		})
+		return
+	}
+
+	message := strings.ToLower(string(output))
+
+	analysis := ShutdownAnalysis{
+		Cause:          "Unknown",
+		Severity:       "Low",
+		Explanation:    "No critical shutdown detected recently.",
+		Recommendation: "No action required.",
+	}
+
+	if strings.Contains(message, "power") {
+		analysis = ShutdownAnalysis{
+			Cause:          "Unexpected power loss",
+			Severity:       "High",
+			Explanation:    "The system shut down due to a sudden power interruption or forced shutdown.",
+			Recommendation: "Check power adapter and battery health.",
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	json.NewEncoder(w).Encode(analysis)
 }
 
 func main() {
-	http.HandleFunc("/metrics", withCORS(metricsHandler))
+	http.HandleFunc("/shutdown-analysis", withCORS(shutdownAnalysisHandler))
 
 	log.Println("SysGuard Agent running on http://127.0.0.1:7878")
 	log.Fatal(http.ListenAndServe("127.0.0.1:7878", nil))
